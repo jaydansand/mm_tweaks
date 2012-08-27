@@ -1,0 +1,25 @@
+<?php
+/**
+ * @file
+ */
+
+/**
+ *  Implements hook_form_FORMID_alter().
+ */
+function page_settings_form_redirect_form_mm_ui_menu_reorder_alter(&$form, &$form_state, $form_id) {
+  $form['#submit'][] = 'page_settings_form_redirect_submit';
+}
+
+/**
+ *  Implements hook_form_FORMID_alter().
+ */
+function page_settings_form_redirect_form_mm_ui_content_edit_alter(&$form, &$form_state, $form_id) {
+  $form['#submit'][] = 'page_settings_form_redirect_submit';
+}
+
+/**
+ *  Implements form submission callback. Redirects user back to content.
+ */
+function page_settings_form_redirect_submit($form, &$form_state) {
+  drupal_goto(arg(0) . '/' . arg(1));
+}

@@ -1,0 +1,52 @@
+<?php
+/**
+ * @file
+ */
+
+/**
+ *  Implements hook_form_alter(). 
+ */
+function hidden_title_checkbox_form_node_form_alter(&$form, &$form_state, $form_id) {
+  $form['#after_build'][] = 'hidden_title_checkbox_after_build';
+  $form['title_checkbox'] = array(
+    '#type' => 'checkbox',
+    '#default_value' => 0,
+    '#return_value' => 1,
+    '#weight' => -4,
+    '#title' => 'Hide the title when viewing a page',
+  );
+  
+  $form['#submit'][] = 'hidden_title_checkbox_submit'; //] = array($form);
+}
+
+/**
+ *  Implements form #after_build callback. Called after the form is ready for display, 
+ *    in this case, crucially exposing Monster Menus/CKEditor elements.
+ */
+function hidden_title_checkbox_after_build($form, &$form_state) {
+  //Take the title and trim all spaces and brackets...
+  $is_hidden = FALSE;
+  if(isset($form['title']['#value'])) {
+    $count = 0;
+    $form['title']['#value'] = preg_replace('/^\s*\[(.+)\]\s*$/', '\\1', $form['title']['#value'], 1, $count);
+    if ($count == 1) {
+      $form['title_checkbox']['#attributes'] = array('checked' => 'checked');
+      $form['title_checkbox']['#value'] = 1;
+    }
+  }
+  
+  //Delete the description for the title
+  $form['title']['#description'] = '';
+  return $form;
+}
+
+/**
+ *  Implements a form submit callback. 
+ */
+function hidden_title_checkbox_submit($form, &$form_state) {
+  if (preg_match('/^\s*\[.+\]\s*$/', $form_state['values']['title'], $matches) !== 1) {
+    if(isset($form_state['values']['title_checkbox']) && $form_state['values']['title_checkbox'] == 1) {
+      $form_state['values']['title'] = '[' . $form_state['values']['title'] . ']';
+    }
+  }
+}

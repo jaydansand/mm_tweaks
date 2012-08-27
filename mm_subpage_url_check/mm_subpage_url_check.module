@@ -1,0 +1,41 @@
+<?php
+/**
+ * @file
+ */
+
+/**
+ *  Implements hook_form_alter(). 
+ */
+function mm_subpage_url_check_form_mm_ui_content_edit_alter(&$form, &$form_state, $form_id) {
+  //If the alias default value is set (exists in the form array) then we proceed with checking if the value is empty
+  if (isset($form['additional_settings']['settings_general']['alias']['#default_value'])) {
+    //If the alias default value is empty, then we can conclude that the unwanted default 'New page' text will appear in the name field. We set the
+      //name field to an empty string.
+    if (empty($form['additional_settings']['settings_general']['alias']['#default_value'])) {
+      //Rid the form of the default value in the 'name' field
+      $form['additional_settings']['settings_general']['name']['#default_value'] = '';
+    }
+  }
+  //Add a validate handler...
+  $form['#validate'][] = 'mm_subpage_url_check_validate';
+}
+
+/**
+ *  Implements a form validation callback. On submit, checks for the validity of the page name and url values.
+ *
+ * @see mm_subpage_url_check_form_mm_ui_content_edit_alter().
+ */
+function mm_subpage_url_check_validate($form, &$form_state) {    
+  //Check the 'name' form element for a name starting with an invalid character.
+  if (!preg_match('/^[a-zA-Z0-9]+/', $form_state['input']['name'])) {
+    form_set_error('name', t('The page name is invalid and must begin with a character matching: a-z, A-Z, or 0-9.'));
+  }
+  
+  //Once again, we must check to see if the alias value is set (since some pages may not have a url/alias field, i.e. the homepage)
+  if (isset($form_state['input']['alias'])) {
+    //Check the 'alias' (url) form element for a url starting with an invalid character.
+    if (!preg_match('/^[a-zA-Z0-9]+/', $form_state['input']['alias'])) {
+      form_set_error('alias', t('The URL is invalid and must begin with a character matching: a-z, A-Z, or 0-9.'));
+    }
+  }
+}

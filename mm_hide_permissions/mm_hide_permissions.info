@@ -1,0 +1,6 @@
+name = Hide Permissions on Page Load
+description = When editing a page or adding a new sub-page, have the creation/editing form load without the permissions options visible.
+core = 7.x
+package = Monster Menus Tweaks
+version = "7.x-dev"
+dependencies[] = monster_menus

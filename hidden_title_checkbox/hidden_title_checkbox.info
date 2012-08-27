@@ -1,0 +1,6 @@
+name = Hide Title via Checkbox
+description = Creates a checkbox below the Title entry field on page creation forms. This checkbox allows the user to select whether or not to hide the title.
+core = 7.x
+package = Monster Menus Tweaks
+version = "7.x-dev"
+dependencies[] = monster_menus

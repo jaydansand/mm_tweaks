@@ -1,0 +1,54 @@
+<?php
+
+/**
+ * Implementation of hook_schema().
+ */
+function mm_panels_schema() {
+  return mm_panels_schema_1();
+}
+
+/**
+ * 
+ */
+function mm_panels_schema_1() {
+  $schema = array();
+
+  $schema['mm_panels_page'] = array(
+    'fields' => array(
+      'mmtid' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'css_id' => array(
+        'type' => 'varchar',
+        'length' => '255',
+      ),
+      'did' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+      ),
+      'pipeline' => array(
+        'type' => 'varchar',
+        'length' => '255',
+      ),
+    ),
+    'primary key' => array('did'),
+  );
+
+  return $schema;
+}
+
+/**
+ * Implementation of hook_install().
+ */
+function mm_panels_install() {
+  db_query("UPDATE {system} SET weight = 11 WHERE name = 'mm_panels_page'");
+}
+
+/**
+ * Implementation of hook_uninstall().
+ */
+function mm_panels_uninstall() {
+  drupal_uninstall_schema('mm_panels_page');
+}

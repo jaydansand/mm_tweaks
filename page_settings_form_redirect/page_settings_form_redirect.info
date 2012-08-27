@@ -1,0 +1,6 @@
+name = Page Settings Form Redirect
+description = After submission of the 'page settings'->'reorder menu' form and general 'page settings' form, the user is redirected back to content.
+core = 7.x
+package = Monster Menus Tweaks
+version = "7.x-dev"
+dependencies[] = monster_menus

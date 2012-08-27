@@ -1,0 +1,282 @@
+<?php
+/**
+ * @file
+ * 
+ * To add sets:
+ * - Create callback functions in sets/[handle].inc
+ * - Add [handle] to $page_sets in mm_default_section_pages_mm_tree_flags()
+ * - Add path -> callbacks to mm_default_section_pages_mm_showpage_routing()
+ * - Add the [handle]'s pages[] to _mm_default_section_pages_manage_set()
+ */
+
+/**
+ * Implements hook_mm_tree_flags(), to define a flag in the UI for a page's settings.
+ */
+function mm_default_section_pages_mm_tree_flags() {
+  $page_sets = array(
+    'acad-dept',
+  );
+  return array(
+    'default_section_pages' => array(
+      '#flag_copy' => FALSE,
+      '#type' => 'textfield',
+      '#description' => t('Space-delimited selection of of standardized, common pages to add to this page. Currently available: @lists', array('@lists' => implode(', ', $page_sets))),
+    ),
+  );
+}
+
+/**
+ * Implements hook_mm_showpage_routing(), to add sets of pages to areas of the site
+ */
+function mm_default_section_pages_mm_showpage_routing() {
+  $items = array();
+  
+  $item_vals = array(
+    'page arguments' => array('_mmtid_', 2),
+    'access callback' => TRUE,
+    'file' => FALSE,
+    'page callback' => FALSE,
+  );
+  
+  // -- Page set definition --
+  // acad-dept: Academic site standard pages
+  $item_vals['file'] = 'sets/acad-dept.inc';
+  
+  $items['academics/study/%/majmin'] = array(
+    'page callback' => 'mm_default_section_pages_acad_dept_majmin',
+  ) + $item_vals;
+  $items['academics/study/%/course_descriptions'] = array(
+    'page callback' => 'mm_default_section_pages_acad_dept_course_descriptions',
+  ) + $item_vals;
+  $items['academics/study/%/faculty'] = array(
+    'page callback' => 'mm_default_section_pages_acad_dept_faculty',
+  ) + $item_vals;
+  $items['academics/study/%/class_schedule'] = array(
+    'page callback' => 'mm_default_section_pages_acad_dept_class_schedule',
+  ) + $item_vals;
+  
+  return $items;
+}
+
+/**
+ * Create/remove a set of MM pages based on predefined "sets"
+ *
+ * @param $op
+ *   String "add" or "remove" to add/remove pages
+ * @param $set
+ *   String name of the set to be added
+ * @param $parent_mmtid
+ *   Integer mmtid of the parent page under which to insert these new pages
+ *
+ * @return
+ *   TRUE on success, FALSE otherwise
+ *
+ * @see _mm_default_section_pages_create_pages()
+ */
+function _mm_default_section_pages_manage_set($op, $set, $parent_mmtid) {
+  if (empty($set) || empty($parent_mmtid)) return FALSE;
+  
+  $pages = array();
+  switch ($set) {
+    case 'acad-dept':
+      $pages = array(
+        'majmin' => 'Major/Minor Requirements',
+        'course_descriptions' => 'Course Descriptions',
+        'faculty' => 'Faculty',
+        'class_schedule' => 'Class Schedule',
+      );
+      break;
+    default:
+      // No matching set found, so bail
+      return FALSE;
+      break;
+  }
+  if ($op == "add") {
+    return _mm_default_section_pages_create_pages($pages, $parent_mmtid);
+  }
+  else if ($op == "remove") {
+    return _mm_default_section_pages_create_pages($pages, $parent_mmtid);
+  }
+  else {
+    return FALSE;
+  }
+}
+
+// _mm_showpage_router(TRUE);
+/**
+ * Implements hook_mm_content_edit_submit_alter(), called when editing a (sometimes new) page's settings
+ */
+function mm_default_section_pages_mm_content_edit_submit_alter($add, $mmtid, &$parameters) {
+  // Check if this is a new page, in which case we can't continue (we don't have
+  // access to the new page's mmtid to append pages to)
+  if ($add) {
+    if (isset($parameters['flags']['default_section_pages'])) {
+      unset($parameters['flags']['default_section_pages']);
+    }
+    return;
+  }
+  
+  if (empty($parameters['flags']['default_section_pages'])) return;
+  
+  $created = _mm_default_section_pages_create_sets($parameters['flags']['default_section_pages'], $mmtid);
+  
+  // Set the stored flag value to the actually-existing-and-created sets:
+  $parameters['flags']['default_section_pages'] = implode(' ', array_keys($created));
+}
+
+/**
+ * Convenience function to automate creating multiple sets under a given mmtid.
+ *
+ * @param $sets
+ *   String (exploded on " ", such as from a page's default_section_pages flag
+ *     value) or an array, with names of sets to create
+ * @param $parent_mmtid
+ *   Integer mmtid of the parent page under which to insert these new sets
+ *
+ * @return
+ *   Associative array of valid sets handled (where $key = set name, $val = TRUE)
+ *
+ * @see mm_default_section_pages_mm_content_edit_submit_alter()
+ */
+function _mm_default_section_pages_create_sets($sets, $parent_mmtid) {
+  if (empty($sets)) return array();
+  
+  if (!is_array($sets)) {
+    $sets = explode(' ', drupal_strtolower(trim($sets)));
+  }
+  
+  $created = array();
+  foreach ($sets as $set) {
+    $set = trim($set);
+    // Check if the set has already been created, and attempt to create it if
+    // it's not a dupe:
+    if (!isset($created[$set]) && _mm_default_section_pages_manage_set('add', $set, $parent_mmtid)) {
+      // Set successfully created
+      $created[$set] = TRUE;
+    }
+  }
+  
+  return $created;
+}
+/**
+ * Create MM pages directly under a given page.
+ *
+ * @param $pages
+ *   An associative array of page aliases and names to create
+ *   - key:   The alias of the generated page
+ *   - value: The name of the generated page
+ *   Example:
+ *   @code
+ *     $pages = array('awesome_page' => 'My Awesome Page');
+ *   @endcode
+ * @param $parent_mmtid
+ *   Integer mmtid of the parent page under which to insert these new pages
+ * @param $page_options
+ *   (optional) Associative array of options to pass to _mm_default_section_pages_create_path()
+ *   for each page created.  Each created page will have the same page options
+ *   applied.
+ *
+ * @return
+ *   TRUE on success, FALSE otherwise
+ *
+ * @see _mm_default_section_pages_create_path()
+ */
+function _mm_default_section_pages_create_pages($pages, $parent_mmtid, $page_options = array()) {
+  if (empty($pages) || !is_array($pages) || empty($parent_mmtid)) return FALSE;
+  
+  $page_option_defaults = array(
+    'alias' => '',
+    'comment' => 0,
+    'default_mode' => MM_PERMS_READ,
+    'flags' => '',
+    'hidden' => FALSE,
+    'hover' => '',
+    'max_depth' => -1,
+    'max_parents' => -1,
+    'menu_start' => -1,
+    // 'mmtid' => ,
+    'name' => '',
+    // 'no_update' => ,
+    'node_info' => 3,
+    // 'perms' => ,
+    'previews' => 0,
+    // 'reset' => ,
+    'rss' => 0,
+    'theme' => '',
+    'type' => 'cat',
+    'uid' => 1,
+    'weight' => 0,
+  );
+  
+  $page_options = (array) $page_options + $page_option_defaults;
+  
+  $parent_page = array(
+    'mmtid' => intval($parent_mmtid),
+    'no_update' => array(
+      'name',
+      'alias',
+      'mmtid',
+      'comment',
+      'default_mode',
+      'flags',
+      'hidden',
+      'hover',
+      'max_depth',
+      'max_parents',
+      'menu_start',
+      'node_info',
+      'previews',
+      'rss',
+      'theme',
+      'type',
+      'uid',
+      'weight',
+    ),
+  ) + $page_option_defaults;
+  
+  foreach ($pages as $alias => $name) {
+    $page = array(
+      'name' => $name,
+      'alias' => $alias,
+    ) + $page_options;
+    
+    $path = array(
+      $parent_page,
+      $page,
+    );
+    
+    if (!_mm_default_section_pages_create_path($path)) return FALSE;
+  }
+  
+  return TRUE;
+}
+
+/**
+ * Frontend to mm_create_path()
+ *
+ * @param $path
+ *   An array of settings for MMCreatePathCat objects, in path order
+ *
+ * @return
+ *   TRUE on success, FALSE otherwise
+ *
+ * @see mm_create_path()
+ */
+function _mm_default_section_pages_create_path($path) {
+  static $class_loaded = FALSE;
+  
+  if (empty($path) || !is_array($path)) return FALSE;
+  
+  if (!$class_loaded) {
+    require_once drupal_get_path('module', 'monster_menus') . '/mm_create_path.inc';
+    $class_loaded = TRUE;
+  }
+
+  $finalized_path = array();
+  
+  foreach ($path as $page_info) {
+    $finalized_path[] = new MMCreatePathCat($page_info);
+  }
+  
+  return !!mm_create_path($finalized_path);
+}

@@ -1,0 +1,6 @@
+name = Validate URL and Name on Add Subpage
+description = Checks the name and url of the submitted sub page creation form. If either starts with a character besides a-z, A-Z, or 0-9, prevent submission of the form.
+core = 7.x
+package = Monster Menus Tweaks
+version = "7.x-dev"
+dependencies[] = monster_menus

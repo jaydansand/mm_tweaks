@@ -1,0 +1,12 @@
+<?php
+/**
+ * @file
+ *
+ */
+
+/**
+ * Implements hook_form_alter().
+ */
+function mm_hide_permissions_form_mm_ui_content_edit_alter(&$form, &$form_state, $form_id) {
+  $form['settings_perms']['#collapsed'] = TRUE;
+}

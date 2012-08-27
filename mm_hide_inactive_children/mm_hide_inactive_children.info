@@ -1,0 +1,6 @@
+name = Hide Inactive Children in Menu
+description = Add a flag to Monster Menus Pages to prevent rendering inactive, immediate children in the menu.
+core = 7.x
+package = Monster Menus Tweaks
+version = "7.x-dev"
+dependencies[] = monster_menus

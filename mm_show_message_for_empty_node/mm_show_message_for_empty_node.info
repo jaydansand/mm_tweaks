@@ -1,0 +1,6 @@
+name = Admin Message For Empty Node
+description = Display a message to content admins when a node is empty
+core = 7.x
+package = Monster Menus Tweaks
+version = "7.x-dev"
+dependencies[] = monster_menus

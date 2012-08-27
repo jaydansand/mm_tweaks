@@ -1,0 +1,7 @@
+name = Monster Menus/Webform Destination Path Fix
+description = Alters the destination path for webform's contextual links
+core = 7.x
+package = Monster Menus Tweaks
+version = "7.x-dev"
+dependencies[] = monster_menus
+dependencies[] = webform

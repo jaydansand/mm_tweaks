@@ -1,0 +1,63 @@
+<?php
+/**
+ * @file
+ * 
+ */
+
+/**
+ * Implements hook_mm_tree_flags(), to define a flag in the UI for a page's settings.
+ */
+function mm_hide_inactive_children_mm_tree_flags() {
+  return array(
+    'hide_inactive_children' => array(
+      '#flag_copy' => FALSE,
+      '#type' => 'checkbox',
+      '#description' => t('Prevent rendering inactive, immediate children in the menu.'),
+    ),
+  );
+}
+
+/**
+ * Implements hook_process_block().
+ */
+function mm_hide_inactive_children_process_block(&$variables) {
+  if ($variables['block']->module != 'monster_menus' || $variables['block']->delta != 1) return;
+  
+  // Reasonable initialization:
+  $mmtids = $oarglist = array();
+  $this_mmtid = mm_home_mmtid();
+  
+  // Get the URL prefix, MMTIDs (current + parents), arg list, and current MMTID:
+  $prefix = mm_parse_args($mmtids, $oarglist, $this_mmtid);
+  
+  // Query params for mm_content_get_tree():
+  $mm_content_get_tree_params = array(
+    MM_GET_TREE_FILTER_BINS => FALSE,   // Don't return recycle bin objects
+    MM_GET_TREE_FILTER_DOTS => FALSE,   // Don't return special items (. prefix)
+    MM_GET_TREE_FILTER_GROUPS => FALSE, // Don't return user groups
+    MM_GET_TREE_FILTER_USERS => FALSE,  // Don't return users
+    MM_GET_TREE_FILTER_NORMAL => TRUE,  // Only return normal pages
+    MM_GET_TREE_HERE => $mmtids,        // Draw a path along these pages
+    MM_GET_TREE_DEPTH => -1,            // Pull the whole tree, sans depth limit
+    MM_GET_TREE_RETURN_TREE => TRUE,    // Return attributes from mm_tree table
+    MM_GET_TREE_RETURN_FLAGS => TRUE,   // Return the flags for each page
+  );
+  
+  $tree = mm_content_get_tree($this_mmtid, $mm_content_get_tree_params);
+  
+  foreach ($tree as $i => $page) {
+    if (!empty($page->flags) && isset($page->flags['hide_inactive_children'])) {
+      $parent_url = url(mm_content_get_mmtid_url($page->mmtid));
+      // REGEXP should target only one <LI> at a time, whose only child is an
+      // <A> with a HREF one level below the page with the flag. This is based
+      // on the theory that any <LI> with more children (e.g. <UL>) is
+      // expanded/active, in which case we don't want to hide it.
+      $immediate_children_regex = '/<li[^>]*>\s*<a[^>]*?href="' . preg_quote($parent_url, '/') . '\/[^\/">]+?">[^<]+?<\/a>\s*<\/li>/im';
+      $regex = array(
+        $immediate_children_regex, // First, kill the immediate children <LI>'s
+        '/\s*<ul class="menu">\s*<\/ul>\s*/', // Finally, clean up any now-empty <UL>'s
+      );
+      $variables['content'] = preg_replace($regex, '', $variables['content']);
+    }
+  }
+}

@@ -1,0 +1,14 @@
+<?php
+/**
+ * @file
+ * Extend Linkit with panel page links
+ */
+
+/**
+ * Implements hook_ctools_plugin_directory().
+ */
+function linkit_mm_pages_ctools_plugin_directory($module, $plugin) {
+  if ($module == 'linkit' && $plugin == 'linkit_plugins') {
+    return 'plugins/linkit_plugins';
+  }
+}

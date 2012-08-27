@@ -1,0 +1,7 @@
+name = Bridge MM w/DS
+description = Apply Monster Menu's node title rendering to Display Suites' node title fields
+core = 7.x
+package = Monster Menus Tweaks
+version = "7.x-dev"
+dependencies[] = monster_menus
+dependencies[] = ds

@@ -1,0 +1,23 @@
+<?php
+/**
+ * @file
+ */
+
+/**
+ *  Implements hook_menu_contexual_links_alter(). 
+ */
+function mm_webform_destination_fix_contextual_links_view_alter(&$element, $items) {
+  // Remove the destination parameter since its overriding the form redirect 
+  if(isset($element['#links']) && (isset($element['#links']['node-webform']) || isset($element['#links']['node-webform-results']))) {
+    if(isset($element['#links']['node-webform']['query']) && isset($element['#links']['node-webform']['query']['destination']) 
+    && !empty($element['#links']['node-webform']['query']['destination'])) {
+        unset($element['#links']['node-webform']['query']['destination']);
+      }    
+    if(isset($element['#links']['node-webform-results']['query']) && isset($element['#links']['node-webform-results']['query']['destination']) 
+    && !empty($element['#links']['node-webform-results']['query']['destination'])) {
+        unset($element['#links']['node-webform-results']['query']['destination']);
+      }
+  }
+  
+  return;
+}

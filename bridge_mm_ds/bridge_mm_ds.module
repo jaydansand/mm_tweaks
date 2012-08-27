@@ -1,0 +1,26 @@
+<?php
+/**
+ * @file
+ * 
+ */
+
+/**
+ * Alter fields defined by Display Suite
+ *
+ * @param $fields
+ *   An array with fields which can be altered just before they get cached.
+ * @param $entity_type
+ *   The name of the entity type.
+ */
+function bridge_mm_ds_ds_fields_info_alter(&$fields, $entity_type) {
+  // Pass node titles through a combination of default MM and default DS title functions
+  // (otherwise DS was stealing title processing and NOT hiding [bracketed] titles):
+  if (isset($fields['title']) && $entity_type == 'node') {
+    $fields['title']['function'] = '_bridge_mm_ds_ds_render_field_node_title';
+  }
+}
+
+function _bridge_mm_ds_ds_render_field_node_title($field) {
+  $field['entity']->title = mm_ui_hide_node_title($field['entity']->title);
+  return ds_render_field($field);
+}

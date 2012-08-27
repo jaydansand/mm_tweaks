@@ -1,0 +1,225 @@
+<?php
+/**
+ * @file
+ * 
+ */
+
+function mm_panels_menu_alter (&$items) {
+  $items['panels/ajax']['access callback'] = '_mm_panels_content_perms';
+  
+  return;
+}
+function _mm_panels_content_perms($access_content) {
+  global $user;
+
+  if (user_access('administer nodes')) { 
+    return TRUE;
+  }
+  //KEYWORD: Make whitelist instead of blacklist
+  $path = explode('/', $_GET['q']);
+  if (isset($path[6]) && !empty($path[6])) {
+    switch(trim(strtolower($path[6]))) {
+      case 'activity': 
+      case 'menus': 
+      case 'mini-panel': 
+      case 'miscellaneous': 
+      case 'page-elements': 
+      case 'widgets':
+      case 'display-suite':
+        return FALSE;
+        break;
+      default:
+        break;
+    }
+  }
+  
+  return user_access($access_content);
+}
+
+function mm_panels_preprocess_page(&$var) {
+
+  // does the page contain the mm flag for create_panel
+  $mm_flag_create_panel = FALSE;
+
+  // array containing mm flags for the current page
+  $mm_flags = array();
+  // current query string
+  
+  $mmtids = array();
+  $oarg_list = array();
+  $this_mmtid = 0;
+  
+  $prefix = mm_parse_args($mmtids, $oarg_list, $this_mmtid);
+  
+  // make sure the current page isn't a settings page or something similar and the prefix is mm/
+  if ($prefix == 'mm' && empty($oarg_list) && !empty($this_mmtid)) {
+    $mm_flags = mm_content_get($this_mmtid, array(MM_GET_FLAGS));
+    if(isset($mm_flags->flags) && isset($mm_flags->flags['create_panel'])) {
+      $mm_flag_create_panel = TRUE;
+    }
+    $page = _mm_panels_is_page_panelized($this_mmtid, $mm_flag_create_panel);
+  }
+  else {
+    return;
+  }
+  
+  // if the page is panelized load up the display
+  if (!empty($page) && $page != FALSE) { 
+    ctools_include('common', 'panels');
+    ctools_include('plugins', 'panels');
+    ctools_include('display-edit', 'panels');
+    ctools_include('context');
+    $display = panels_load_display($page['did']); 
+    $display->css_id = $page['css_id'];
+    $renderer = panels_get_renderer($page['pipeline'], $display);
+    $var['page']['content']['system_main'] = array(array(
+      '#markup' => '&nbsp' . panels_render_display($display, $renderer), // Theres a space here to fix collapsing div issue (will fix with css)
+      '#weight' => 0,
+    ));
+    // if the user has mm write permissions allow them to see the IPE bar
+    if (mm_content_user_can($this_mmtid, MM_PERMS_WRITE)) {
+      $buttons = &drupal_static('panels_ipe_toolbar_buttons', array());
+      $output = theme('panels_ipe_toolbar', array('buttons' => $buttons));
+      $var['page']['footer']['panels_ipe'] = array(
+        '#markup' => $output,
+      ); 
+    }      
+  }
+  return; 
+}
+
+function mm_panels_mm_tree_flags() {
+  if (mm_content_user_can(intval(ltrim(strstr($_GET['q'], '/'), '/')), MM_PERMS_WRITE)) {
+    return array(
+      'create_panel' => array('#type' => 'checkbox', '#description' => t('Creates a "panelized" MM page.')),
+    );
+  }
+  
+  return array();
+}
+
+function mm_panels_mm_content_edit_submit_alter($add, $mmtid, &$parameters) {
+  // does the page contain the mm flag for create_panel
+  $mm_flag_create_panel = FALSE;
+  if (isset($parameters['flags']['create_panel'])) {
+   $mm_flag_create_panel = TRUE;
+  }
+  
+  if ($add) {
+    if ($mm_flag_create_panel) {
+      drupal_set_message(t("Can not panelize on page creation, please recheck flag under the new page's settings."), 'warning');
+      unset($parameters['flags']['create_panel']);
+    }
+    return;
+  }
+
+  if (mm_content_user_can($mmtid, MM_PERMS_WRITE)) {
+    $page = _mm_panels_is_page_panelized($mmtid, $mm_flag_create_panel);
+    
+    if ($mm_flag_create_panel) {
+      // if the page isn't panelized
+      if (!$page) {
+        // Create a new display and record that.
+        $display = panels_new_display();
+        $display->layout = 'onecol';  //<---- KEYWORD: figure something out here or at least set it to something .. default to one col (maybe backened setting)
+        panels_save_display($display);
+        db_insert('mm_panels_page')
+          ->fields(array(
+            'mmtid' => $mmtid,
+            'did' => $display->did,
+            'css_id' => '',
+            'pipeline' => 'ipe',
+          ))
+          ->execute();
+      }
+    }
+/*      else{
+      $panels_deleted = db_delete('mm_panels_page')
+        ->condition('mmtid', $mmtid)
+        ->execute();
+        
+      if ($panels_deleted > 0 && $page != FALSE && !empty($page['did'])) {
+        panels_delete_display($page['did']);
+      }
+    } */
+  }
+  return;
+}
+
+function _mm_panels_is_page_panelized($mmtid, $display_panels_page) {
+  
+  if($display_panels_page) {
+    $panelized_page = db_select('mm_panels_page', 'p')
+      ->fields('p')
+      ->condition('mmtid', $mmtid, '=')
+      ->execute()
+      ->fetchAssoc();
+      
+    if (isset($panelized_page) && (!empty($panelized_page) || $panelized_page)) {
+      return $panelized_page;
+    }
+  }
+  return FALSE;
+}
+
+function mm_panels_form_ctools_node_content_type_edit_form_alter(&$form, &$form_state) {
+  $nodes_to_display = array();
+  
+  unset($form['nid']);
+  $form['build_mode']['#default_value'] = 'full';
+  
+  if (!user_access('administer nodes')) {
+    unset($form['links']);
+    unset($form['identifier']);
+    unset($form['link_node_title']);
+    unset($form['leave_node_title']);
+    unset($form['override_title']);
+    unset($form['override_title_text']);
+    unset($form['override_title_markup']);
+  }
+  
+  $q = explode('/',$_GET['q']); 
+  $panelized_page = db_select('mm_panels_page', 'm')
+    ->fields('m' ,array('did', 'mmtid'))
+    ->condition('did', intval($q[4]), '=')
+    ->execute()
+    ->fetchAssoc();
+
+  if (mm_content_user_can($panelized_page['mmtid'], MM_PERMS_WRITE)) {  
+    $nodes_on_page = mm_content_get_nids_by_mmtid($panelized_page['mmtid']);
+    foreach($nodes_on_page as $node) {
+      $nodes_obj = node_load($node);
+      $nodes_to_display[$nodes_obj->nid] = $nodes_obj->title;
+    }
+  }
+  
+  $form['nid'] = array(
+    '#title' => t('Select content by node title'),
+    '#default_value' => '',
+    '#type' => 'select',
+    '#options' => $nodes_to_display,
+    '#weight' => -100,
+  );
+  
+  return;
+}
+
+function mm_panels_process_panels_add_content_modal(&$vars) {
+  global $user;
+  
+  if (user_access('administer nodes')) {
+    return;
+  }
+  
+  unset($vars['categories_array']);
+
+  $vars['root_content'] ='<div class="content-type-button clearfix">
+    <a href="/panels/ajax/ipe/add-pane/' . $vars['renderer']->display->did . '/' . $vars['region'] . '/node/node" class="use-ajax panels-modal-add-config" title="Add a node from your site as content.">
+    <img src="https://drupal-local.lawrence.edu/sites/all/modules/ctools/plugins/content_types/node/icon_node.png" alt="" /></a>  
+    <div>
+      <a href="/panels/ajax/ipe/add-pane/'.$vars['renderer']->display->did. '/' . $vars['region'] . '/node/node" class="use-ajax panels-modal-add-config" title="Add a node from your site as content.">Existing node</a>
+    </div>
+  </div>';
+  
+  return;
+}
