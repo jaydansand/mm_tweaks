@@ -42,10 +42,10 @@ function _mm_panels_content_perms($access_content) {
   if (user_access('administer nodes')) { 
     return TRUE;
   }
-  
+
   $path = explode('/', $_GET['q']);
   // If adding content to a panel pane
-  if (!empty($path[3]) && trim(drupal_strtolower($path[3])) == 'select-content') {
+  if (!empty($path[3]) && trim(drupal_strtolower($path[3])) == 'add-pane') {
     // By default a user can only add existing nodes to a Panel Pane.
     // A user with the "Administer Nodes" permission can add all available
     // content (e.g. Views, Blocks, etc.).
@@ -57,6 +57,14 @@ function _mm_panels_content_perms($access_content) {
     else {
       return FALSE;
     }
+  }
+  else if (!empty($path[3]) && trim(drupal_strtolower($path[3])) == 'select-content') {
+     if (!empty($path[6])) {
+      return FALSE;
+     }
+     else {
+      return TRUE;
+     }
   }
   
   return user_access($access_content);
