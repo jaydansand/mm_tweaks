@@ -2,7 +2,6 @@ name = Monster Menus Panels
 description = Allows a Monster Menus page to be panelized.
 core = 7.x
 package = Monster Menus Tweaks
-version = "7.x-1.0"
 files[] = mm_panels.module
 dependencies[] = monster_menus
 dependencies[] = panels
