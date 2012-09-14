@@ -49,3 +49,12 @@ function mm_panels_schema_1() {
 function mm_panels_install() {
   db_query("UPDATE {system} SET weight = 11 WHERE name = 'mm_panels_page'");
 }
+
+/**
+ * Implements hook_uninstall().
+ */
+function mm_panels_uninstall() {
+  db_delete('mm_tree_flags')
+    ->condition('flag', 'create_panel', '=')
+    ->execute();
+}
