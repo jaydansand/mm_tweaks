@@ -1,0 +1,7 @@
+name = Simpler RSS Page
+description = Simplify RSS Page nodes by standardizing the HTML output and removing certain interactive elements.
+core = 7.x
+package = Monster Menus Tweaks
+version = "7.x-dev"
+dependencies[] = monster_menus
+dependencies[] = rss_page

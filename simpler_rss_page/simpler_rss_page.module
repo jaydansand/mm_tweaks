@@ -1,0 +1,46 @@
+<?php
+/**
+ * @file
+ */
+
+/**
+ *  Implements hook_node_view_alter(). 
+ */
+function simpler_rss_page_node_view_alter(&$build) {
+  if ($build['#bundle'] != 'rss_page') {
+    return;
+  }
+  if (!empty($build['body']['nav'])) {
+    unset($build['body']['nav']);
+  }
+
+  if (!empty($build['body']['body'])) {
+    $regexp_match = array(
+      '|source</a></div>$|',
+    );
+    $regexp_filter = array(
+      '|\<a href="[^"]+\?byfeed=\d+" class="feed-item-source active">.*?\</a> - |',
+    );
+    
+    foreach ($build['body']['body'] as $i => $item) {
+      if (!empty($item['#markup'])) {
+        foreach ($regexp_match as $pattern) {
+          if (preg_match($pattern, $item['#markup']) === 1) {
+            unset($build['body']['body'][$i]);
+            continue 2;
+          }
+        }
+        $build['body']['body'][$i]['#markup'] = preg_replace($regexp_filter, '', $item['#markup']);
+      }
+    }
+  }
+}
+
+function simpler_rss_page_form_rss_page_node_form_alter(&$form, &$form_state, $form_id) {
+  if (!empty($form['opts']) && !empty($form['opts']['rss_sort'])) {
+    $form['opts']['rss_sort'] = array(
+      '#type' => 'value',
+      '#value' => 'date',
+    );
+  }
+}
