@@ -1,14 +1,18 @@
 <?php
+/**
+ * @file
+ * Install, update, and uninstall functions for the mm_panels module.
+ */
 
 /**
- * Implementation of hook_schema().
+ * Implements hook_schema().
  */
 function mm_panels_schema() {
   return mm_panels_schema_1();
 }
 
 /**
- * 
+ * Current schema for mm_panels.
  */
 function mm_panels_schema_1() {
   $schema = array();
@@ -40,15 +44,17 @@ function mm_panels_schema_1() {
 }
 
 /**
- * Implementation of hook_install().
+ * Implements hook_install().
  */
 function mm_panels_install() {
   db_query("UPDATE {system} SET weight = 11 WHERE name = 'mm_panels_page'");
 }
 
 /**
- * Implementation of hook_uninstall().
+ * Implements hook_uninstall().
  */
 function mm_panels_uninstall() {
-  drupal_uninstall_schema('mm_panels_page');
+  db_delete('mm_tree_flags')
+    ->condition('flag', 'create_panel', '=')
+    ->execute();
 }
