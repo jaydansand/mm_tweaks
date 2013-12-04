@@ -1,0 +1,7 @@
+name = Auto ThickBox Plus
+description = Upgrade Thickbox to Auto ThickBox Plus, a drop-in replacement which works in more modern browsers
+version = "7.x-1.x-dev"
+core = "7.x"
+project = "thickbox"
+
+dependencies[] = thickbox

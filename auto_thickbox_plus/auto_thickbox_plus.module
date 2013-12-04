@@ -1,0 +1,79 @@
+<?php
+/**
+ * @file
+ * Provide a wrapper around the Auto ThickBox Plus WordPress plugin and
+ * seamlessly replace Thickbox's CSS and JS includes.
+ * @see http://attosoft.info/en/blog/auto-thickbox-plus/
+ */
+
+/**
+ * Implements hook_css_alter().
+ */
+function auto_thickbox_plus_css_alter(&$css) {
+  // Check for Thickbox.
+  $thickbox_key = drupal_get_path('module', 'thickbox') . '/thickbox.css';
+  if (empty($css[$thickbox_key])) {
+    // If we can't find the Thickbox CSS, exit out. This is an error condition,
+    // and should only happen if the path has been changed by the module's
+    // maintainer (unlikely since it is desupported) or altered by another
+    // module. Either way, we can't handle it.
+    return;
+  }
+  $path = drupal_get_path('module', 'auto_thickbox_plus');
+  $thickbox_css = &$css[$thickbox_key];
+
+  // Alter the Thickbox JS path to point to Auto ThickBox Plus.
+  $thickbox_css['data'] = $path . '/auto-thickbox-plus/thickbox.min.css';
+}
+
+/**
+ * Implements hook_js_alter().
+ */
+function auto_thickbox_plus_js_alter(&$javascript) {
+  // Check for Thickbox.
+  $thickbox_key = drupal_get_path('module', 'thickbox') . '/thickbox.js';
+  if (empty($javascript[$thickbox_key])) {
+    // If we can't find the Thickbox JS, exit out. This is an error condition,
+    // and should only happen if the path has been changed by the module's
+    // maintainer (unlikely since it is desupported) or altered by another
+    // module. Either way, we can't handle it.
+    return;
+  }
+  $path = drupal_get_path('module', 'auto_thickbox_plus');
+  $thickbox_js = &$javascript[$thickbox_key];
+
+  // Alter the Thickbox JS path to point to Auto ThickBox Plus.
+  $thickbox_js['data'] = $path . '/auto-thickbox-plus/thickbox.min.js';
+  // Auto ThickBox Plus has some extra parameters we need in the Thickbox
+  // object.
+  $thickboxl10n = array(
+    'image' => t('Image'),
+    'of' => t('of'),
+    'noiframes' => t('This feature requires inline frames. You have iframes disabled or your browser does not support them.'),
+    'loadingAnimation' => url("{$path}/auto-thickbox-plus/images/loadingAnimation.gif"),
+    'closeImage' => url("{$path}/auto-thickbox-plus/images/tb-close.png"),
+  );
+  $javascript['settings']['data'][] = array('thickbox' => $thickboxl10n);
+
+  // Auto ThickBox Plus expects a global "thickboxL10n" object from WordPress
+  // via wp_localize_script(). Point it at our extended Drupal.settings.thickbox
+  // object, which should have all the necessary parameters. Ensure that this
+  // hijack executes just before the Auto ThickBox Plus JS runs.
+  // We use a file instead of inline because otherwise it is not included in the
+  // output when Drupal renders a page inside of the Thickbox (in the
+  // Monster Menus module's tree browser, for example).
+  $hack_path = $path . '/auto_thickbox_plus.js';
+  $hack_settings = array(
+    'type' => 'file',
+    'weight' => $thickbox_js['weight'] - 0.1,
+    'data' => $hack_path,
+  ) + $thickbox_js;
+  // Note about auto_thickbox_plus.js, but kept out of that file in order to
+  // keep the download size small.
+  // We use jQuery(document).ready(...) because the hack must fire after
+  // Drupal.settings is built via jQuery.extend() at the end of JS inclusion,
+  // but before Auto ThickBox Plus's .ready() function. This works as long as
+  // our .ready(...) is registered just ahead of Auto ThickBox Plus's (which it
+  // should be, in theory - see $hack_settings['weight'] above).
+  $javascript[$hack_path] = $hack_settings;
+}
