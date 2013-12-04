@@ -1,110 +1,191 @@
 <?php
 /**
  * @file
- * 
+ * Core functionality for the Monster Menus Panels Bridge.
  */
 
-function mm_panels_menu_alter (&$items) {
-  $items['panels/ajax']['access callback'] = '_mm_panels_content_perms';
-  
+/**
+ * Implements hook_help().
+ */
+function mm_panels_help($path, $arg) {
+  if ($path == 'admin/help#mm_panels') {
+    $output = file_get_contents(drupal_get_path('module', 'mm_panels') . '/README.txt');
+    return module_exists('markdown') ? filter_xss_admin(module_invoke('markdown', 'filter', 'process', 0, -1, $output)) : '<pre>' . check_plain($output) . '</pre>';
+  }
   return;
 }
-function _mm_panels_content_perms($access_content) {
-  global $user;
 
-  if (user_access('administer nodes')) { 
-    return TRUE;
-  }
-  //KEYWORD: Make whitelist instead of blacklist
-  $path = explode('/', $_GET['q']);
-  if (isset($path[6]) && !empty($path[6])) {
-    switch(trim(strtolower($path[6]))) {
-      case 'activity': 
-      case 'menus': 
-      case 'mini-panel': 
-      case 'miscellaneous': 
-      case 'page-elements': 
-      case 'widgets':
-      case 'display-suite':
-        return FALSE;
-        break;
-      default:
-        break;
-    }
-  }
-  
-  return user_access($access_content);
+/**
+ * Implements hook_menu_alter().
+ */
+function mm_panels_menu_alter(&$items) {
+  $items['panels/ajax']['access callback'] = '_mm_panels_content_perms';
+  return;
 }
 
+/**
+ * Provides a access callback for 'panels/ajax' menu router.
+ *
+ * Only users who have the 'administer nodes' permission are allowed to add
+ * content other than existing nodes to a panel pane.
+ *
+ * The $user_access_argument permission is also checked to ensure a user has
+ * appropriate access permissions if we don't have anything to say about the
+ * request.
+ *
+ * @param string $user_access_argument
+ *   Pass-through parameter to user_access() to add any additional check after
+ *   we determine that we've got nothing to do with the request.
+ *
+ * @return bool
+ *   TRUE if a user has permission, and FALSE if they do not.
+ */
+function _mm_panels_content_perms($user_access_argument) {
+
+  if (user_access('administer nodes')) {
+    return TRUE;
+  }
+
+  $path = explode('/', $_GET['q']);
+  // If a user is adding content to a panel pane.
+  if (!empty($path[3]) && trim(drupal_strtolower($path[3])) == 'add-pane') {
+    // By default a user can only add existing nodes to a panel pane.
+    // A user with the "Administer Nodes" permission can add all available
+    // content (e.g. Views, Blocks, etc.).
+    // TODO: Make Admin page for these settings similar to
+    // 'admin/structure/panels/settings/panel-node'.
+    if (!empty($path[6]) && trim(drupal_strtolower($path[6])) == 'node') {
+      return TRUE;
+    }
+    else {
+      return FALSE;
+    }
+  }
+  elseif (!empty($path[3]) && trim(drupal_strtolower($path[3])) == 'select-content') {
+    // The current URL is something like panels/ajax/ipe/select-content/%
+    if (empty($path[6])) {
+      // We need to let the base panels/ajax/ipe/select-content path through,
+      // or else the user wouldn't be able to choose any option (including
+      // "add-pane", handled above).
+      return TRUE;
+    }
+    else {
+      // We aren't letting any other select-content/% calls through, because
+      // we don't want users without "administer nodes" access to be able to
+      // select arbitrary existing content (views, etc.)
+      return FALSE;
+    }
+  }
+
+  // If any other request comes through ajax_router, check user permissions via
+  // the string passed to us.
+  return user_access($user_access_argument);
+}
+
+/**
+ * Implements hook_preprocess_page().
+ *
+ * If the "create_panel" flag is set and the user has the monster menus
+ * "MM_PERMS_WRITE" permission, load and render the appropriate panel
+ * display.
+ */
 function mm_panels_preprocess_page(&$var) {
 
-  // does the page contain the mm flag for create_panel
   $mm_flag_create_panel = FALSE;
-
-  // array containing mm flags for the current page
   $mm_flags = array();
-  // current query string
-  
   $mmtids = array();
   $oarg_list = array();
   $this_mmtid = 0;
-  
+
   $prefix = mm_parse_args($mmtids, $oarg_list, $this_mmtid);
-  
-  // make sure the current page isn't a settings page or something similar and the prefix is mm/
+
+  // We need to make sure the current page isn't a settings page or something
+  // similar and that the page prefix is mm/.
   if ($prefix == 'mm' && empty($oarg_list) && !empty($this_mmtid)) {
+    // Gather all the MM flags for the current MMTID.
     $mm_flags = mm_content_get($this_mmtid, array(MM_GET_FLAGS));
-    if(isset($mm_flags->flags) && isset($mm_flags->flags['create_panel'])) {
+    // If the "Create Panel" flag is checked set the flag to TRUE.
+    if (isset($mm_flags->flags) && isset($mm_flags->flags['create_panel'])) {
       $mm_flag_create_panel = TRUE;
     }
+    // Return the panelized page or FALSE if the page has not yet been
+    // panelized.
     $page = _mm_panels_is_page_panelized($this_mmtid, $mm_flag_create_panel);
   }
   else {
     return;
   }
-  
-  // if the page is panelized load up the display
-  if (!empty($page) && $page != FALSE) { 
+
+  // If the page is already panelized, load the display.
+  if (!empty($page) && $page != FALSE) {
+
     ctools_include('common', 'panels');
     ctools_include('plugins', 'panels');
     ctools_include('display-edit', 'panels');
     ctools_include('context');
-    $display = panels_load_display($page['did']); 
+    // Load the panels display based on the display id.
+    $display = panels_load_display($page['did']);
     $display->css_id = $page['css_id'];
+    // Get the panels render.
     $renderer = panels_get_renderer($page['pipeline'], $display);
-    $var['page']['content']['system_main'] = array(array(
-      '#markup' => '&nbsp' . panels_render_display($display, $renderer), // Theres a space here to fix collapsing div issue (will fix with css)
-      '#weight' => 0,
-    ));
-    // if the user has mm write permissions allow them to see the IPE bar
+    // Display panels content on current MM page.
+    $var['page']['content']['system_main'] = array(
+      array(
+        '#markup' => '&nbsp' . panels_render_display($display, $renderer),
+        '#weight' => 0,
+      ),
+    );
+    // If the user has MM write permissions allow them to see the panels IPE
+    // bar.
     if (mm_content_user_can($this_mmtid, MM_PERMS_WRITE)) {
-      $buttons = &drupal_static('panels_ipe_toolbar_buttons', array());
-      $output = theme('panels_ipe_toolbar', array('buttons' => $buttons));
+      $ipe_toolbar_buttons = &drupal_static('panels_ipe_toolbar_buttons', array());
+      $ipe_display = theme('panels_ipe_toolbar', array('buttons' => $ipe_toolbar_buttons));
       $var['page']['footer']['panels_ipe'] = array(
-        '#markup' => $output,
-      ); 
-    }      
+        '#markup' => $ipe_display,
+      );
+    }
   }
-  return; 
+  return;
 }
 
+/**
+ * Implements hook_mm_tree_flags().
+ */
 function mm_panels_mm_tree_flags() {
-  if (mm_content_user_can(intval(ltrim(strstr($_GET['q'], '/'), '/')), MM_PERMS_WRITE)) {
+  $mmtids = array();
+  $oarg_list = array();
+  $this_mmtid = 0;
+
+  $prefix = mm_parse_args($mmtids, $oarg_list, $this_mmtid);
+
+  // If a user has MM write permissions, then display the MM panels page flag.
+  if (!empty($this_mmtid) && mm_content_user_can($this_mmtid, MM_PERMS_WRITE)) {
     return array(
-      'create_panel' => array('#type' => 'checkbox', '#description' => t('Creates a "panelized" MM page.')),
+      'create_panel' => array(
+        '#type' => 'checkbox', '#description' => t('Creates a "panelized" MM page.'),
+      ),
     );
   }
-  
+
   return array();
 }
 
+/**
+ * Implements hook_mm_content_edit_submit_alter().
+ *
+ * If the "create_panel" flag is checked and the MM page has not yet been
+ * panelized, create a new entry in the database for that page.
+ */
 function mm_panels_mm_content_edit_submit_alter($add, $mmtid, &$parameters) {
-  // does the page contain the mm flag for create_panel
+
   $mm_flag_create_panel = FALSE;
+  // Does the page contain the mm flag for create_panel?
   if (isset($parameters['flags']['create_panel'])) {
-   $mm_flag_create_panel = TRUE;
+    $mm_flag_create_panel = TRUE;
   }
-  
+
+  // Do not allow a page to be panelized on creation.
+  // Until the page is created, we will not know its MMTID.
   if ($add) {
     if ($mm_flag_create_panel) {
       drupal_set_message(t("Can not panelize on page creation, please recheck flag under the new page's settings."), 'warning');
@@ -113,15 +194,16 @@ function mm_panels_mm_content_edit_submit_alter($add, $mmtid, &$parameters) {
     return;
   }
 
+  // If the user has MM write permissions.
   if (mm_content_user_can($mmtid, MM_PERMS_WRITE)) {
     $page = _mm_panels_is_page_panelized($mmtid, $mm_flag_create_panel);
-    
+
     if ($mm_flag_create_panel) {
-      // if the page isn't panelized
+      // If the page has not yet been panelized, create a new panels display.
       if (!$page) {
-        // Create a new display and record that.
         $display = panels_new_display();
-        $display->layout = 'onecol';  //<---- KEYWORD: figure something out here or at least set it to something .. default to one col (maybe backened setting)
+        // TODO: Make the display layout configurable in the Drupal backend.
+        $display->layout = 'onecol';
         panels_save_display($display);
         db_insert('mm_panels_page')
           ->fields(array(
@@ -133,66 +215,112 @@ function mm_panels_mm_content_edit_submit_alter($add, $mmtid, &$parameters) {
           ->execute();
       }
     }
-/*      else{
-      $panels_deleted = db_delete('mm_panels_page')
-        ->condition('mmtid', $mmtid)
-        ->execute();
-        
-      if ($panels_deleted > 0 && $page != FALSE && !empty($page['did'])) {
-        panels_delete_display($page['did']);
-      }
-    } */
+    // else {
+      // Delete the panelized page from the database when the "Create Panel"
+      // flag is unchecked.
+      // TODO: Make this configurable in the Drupal backend.
+      // $panels_deleted = db_delete('mm_panels_page')
+      // ->condition('mmtid', $mmtid)
+      // ->execute();
+      // if ($panels_deleted > 0 && $page != FALSE && !empty($page['did'])) {
+        // panels_delete_display($page['did']);
+      // }
+    // }
   }
   return;
 }
 
+/**
+ * Returns panel data for requested $mmtid.
+ *
+ * If the MM page is panelized, return that page's panel data.  If the page has
+ * not been panelized return FALSE.
+ *
+ * @param string $mmtid
+ *   The mmtid of the page being requested.
+ * @param bool $display_panels_page
+ *   The MM 'create panel' flag.
+ *
+ * @return array|bool
+ *   Returns the data for the requested $mmtid or FALSE if that $mmtid is not
+ *   panelized.
+ */
 function _mm_panels_is_page_panelized($mmtid, $display_panels_page) {
-  
-  if($display_panels_page) {
+
+  if ($display_panels_page) {
     $panelized_page = db_select('mm_panels_page', 'p')
       ->fields('p')
       ->condition('mmtid', $mmtid, '=')
       ->execute()
       ->fetchAssoc();
-      
+    // If a panelized page is found, then return the page's panel data.
     if (isset($panelized_page) && (!empty($panelized_page) || $panelized_page)) {
       return $panelized_page;
     }
   }
+  // A panelized MM page was not found.
   return FALSE;
 }
 
+/**
+ * Implements hook_form_ctools_node_content_type_edit_form_alter().
+ */
 function mm_panels_form_ctools_node_content_type_edit_form_alter(&$form, &$form_state) {
   $nodes_to_display = array();
-  
+
+  // Remove auto-complete from form.
   unset($form['nid']);
+  // The only build mode that is currently allowed is 'Full Content'
   $form['build_mode']['#default_value'] = 'full';
-  
+
+  // Remove the following settings if a user does not have the
+  // "Administer Nodes" role.
   if (!user_access('administer nodes')) {
-    unset($form['links']);
-    unset($form['identifier']);
-    unset($form['link_node_title']);
-    unset($form['leave_node_title']);
-    unset($form['override_title']);
-    unset($form['override_title_text']);
-    unset($form['override_title_markup']);
+    if (isset($form['links'])) {
+      unset($form['links']);
+    }
+    if (isset($form['identifier'])) {
+      unset($form['identifier']);
+    }
+    if (isset($form['link_node_title'])) {
+      unset($form['link_node_title']);
+    }
+    if (isset($form['leave_node_title'])) {
+      unset($form['leave_node_title']);
+    }
+    if (isset($form['override_title'])) {
+      unset($form['override_title']);
+    }
+    if (isset($form['override_title_text'])) {
+      unset($form['override_title_text']);
+    }
+    if (isset($form['override_title_markup'])) {
+      unset($form['override_title_markup']);
+    }
   }
-  
-  $q = explode('/',$_GET['q']); 
+
+  // Get the display ID of the page being edited.
+  $q = explode('/', $_GET['q']);
+  $did = (isset($q[4]))? intval($q[4]) : 0;
   $panelized_page = db_select('mm_panels_page', 'm')
-    ->fields('m' ,array('did', 'mmtid'))
-    ->condition('did', intval($q[4]), '=')
+    ->fields('m', array('did', 'mmtid'))
+    ->condition('did', $did, '=')
     ->execute()
     ->fetchAssoc();
 
-  if (mm_content_user_can($panelized_page['mmtid'], MM_PERMS_WRITE)) {  
+  // Does the user have write permissions on the MM page being edited?
+  if (mm_content_user_can($panelized_page['mmtid'], MM_PERMS_WRITE)) {
+    // Gather all nodes on the current monster menus page.
     $nodes_on_page = mm_content_get_nids_by_mmtid($panelized_page['mmtid']);
-    foreach($nodes_on_page as $node) {
+    // Store each nodes nid and title.
+    foreach ($nodes_on_page as $node) {
       $nodes_obj = node_load($node);
       $nodes_to_display[$nodes_obj->nid] = $nodes_obj->title;
     }
   }
-  
+
+  // Only allow nodes that have been placed on the requested MM page to be
+  // added to a panel pane.  This allows us to preserve MM permissions.
   $form['nid'] = array(
     '#title' => t('Select content by node title'),
     '#default_value' => '',
@@ -200,26 +328,32 @@ function mm_panels_form_ctools_node_content_type_edit_form_alter(&$form, &$form_
     '#options' => $nodes_to_display,
     '#weight' => -100,
   );
-  
+
   return;
 }
-
+/**
+ * Implements hook_process_panels_add_content_modal().
+ *
+ * If the user does NOT have the "administer node" permission we want to remove
+ * all content options EXCEPT "add existing node".
+ */
 function mm_panels_process_panels_add_content_modal(&$vars) {
-  global $user;
-  
+
   if (user_access('administer nodes')) {
     return;
   }
-  
+
+  // Remove category options from the left side of the "Add Content" dialog.
   unset($vars['categories_array']);
 
-  $vars['root_content'] ='<div class="content-type-button clearfix">
+  // Only allow users to add existing nodes to a panel pane.
+  $vars['root_content'] = '<div class="content-type-button clearfix">
     <a href="/panels/ajax/ipe/add-pane/' . $vars['renderer']->display->did . '/' . $vars['region'] . '/node/node" class="use-ajax panels-modal-add-config" title="Add a node from your site as content.">
-    <img src="https://drupal-local.lawrence.edu/sites/all/modules/ctools/plugins/content_types/node/icon_node.png" alt="" /></a>  
+    <img src="https://drupal-local.lawrence.edu/sites/all/modules/ctools/plugins/content_types/node/icon_node.png" alt="" /></a>
     <div>
-      <a href="/panels/ajax/ipe/add-pane/'.$vars['renderer']->display->did. '/' . $vars['region'] . '/node/node" class="use-ajax panels-modal-add-config" title="Add a node from your site as content.">Existing node</a>
+      <a href="/panels/ajax/ipe/add-pane/' . $vars['renderer']->display->did . '/' . $vars['region'] . '/node/node" class="use-ajax panels-modal-add-config" title="Add a node from your site as content.">Existing node</a>
     </div>
   </div>';
-  
+
   return;
 }
