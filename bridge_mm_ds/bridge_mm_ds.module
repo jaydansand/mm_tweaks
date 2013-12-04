@@ -24,3 +24,7 @@ function _bridge_mm_ds_ds_render_field_node_title($field) {
   $field['entity']->title = mm_ui_hide_node_title($field['entity']->title);
   return ds_render_field($field);
 }
+
+function bridge_mm_ds_panels_pane_content_alter(&$content, $pane, $display_args, $display_context, $this, $display) {
+  $content->title = mm_ui_hide_node_title($content->title);
+}
