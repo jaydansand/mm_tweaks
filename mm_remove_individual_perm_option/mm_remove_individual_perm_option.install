@@ -1,0 +1,13 @@
+<?php
+/**
+ * @file
+ * Install function for the mm_remove_individual_perm_option module.
+ */
+
+/**
+ * Implements hook_install().
+ */
+function mm_remove_individual_perm_option_install() {
+  // Make sure mm_remove_individual_perm_option's hooks run later than MM's.
+  db_query("UPDATE {system} SET weight = 101 WHERE name = 'mm_remove_individual_perm_option'");
+}

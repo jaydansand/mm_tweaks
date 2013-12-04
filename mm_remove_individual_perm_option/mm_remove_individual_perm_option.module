@@ -1,0 +1,110 @@
+<?php
+/**
+ * @file
+ * 
+ */
+ 
+/**
+ * Implements hook_permission().
+ */
+function mm_remove_individual_perm_option_permission() {
+  return array(
+    'add individual mm perms' => array(
+      'title' => t('Add individual MM permissions'),
+      'description' => t('Allows for the ability to grant an individual user permissions on a MM page or node.'),
+    ),
+  );
+}
+
+/**
+ * Implements hook_process_form_FORM_ID_alter().
+ */
+function mm_remove_individual_perm_option_form_mm_ui_content_edit_alter(&$form, &$form_state) {
+  if (!user_access('add individual mm perms', NULL)) {
+    // Remove the "add" button for the individuals permission section.
+    $form['settings_perms']['table']['indiv']['#value']['action'] = '';
+    // Remove "delete" link for existing individual permissions
+    foreach($form['settings_perms']['table']['indiv'] as $key => &$value) {
+      if (is_int($key)) {
+        if (!empty($value[1]) && !empty($value[1]['#markup'])) {
+          $value[1]['#markup'] = preg_replace('|<a href.+?MMSettingsPermsDelete.+?delete</a>|i', '', $value[1]['#markup']);
+        }
+      }
+    }
+  }
+  // Call validate function to ensure individual permissions aren't altered.
+  $form['#validate'][] = '_mm_remove_individual_perm_option_form_mm_ui_content_validate';
+}
+
+function _mm_remove_individual_perm_option_form_mm_ui_content_validate($form, &$form_state) {
+  if (!user_access('add individual mm perms', NULL)) {
+    // Get the individual page permissions that existed prior to the form being
+    // submitted.
+    $perms = mm_content_get_perms($form_state['values']['path'], TRUE, FALSE, FALSE);
+    // Reset the all_values_user array since we will be rebuilding it below.
+    $form_state['values']['all_values_user'] = array();
+    // Rebuild the all_values_user array based on the page's previous
+    // individual permissions.
+    foreach($perms as $perm => $type) {
+      if (!empty($type['users'])) {
+        // This is really messy!! Unfortunately, there is not a better way to
+        // remove the "delete" button under the individuals permission section.
+        $form_state['values']['all_values_user'][$perm] = $type['users'];
+      }
+    }
+  }
+}
+
+/**
+ * Implements hook_process_form_FORM_ID_alter().
+ */
+function mm_remove_individual_perm_option_form_node_form_alter(&$form, &$form_state) {
+  // Remove ability to allow anyone to edit this node.
+  unset($form['settings_perms']['table']['everyone']);
+  // If a user doesn't have permission to add individual node permissions
+  if (!user_access('add individual mm perms', NULL)) {
+    // Remove "delete" link for existing individual permissions
+    foreach($form['settings_perms']['table']['indiv_tbl'] as &$value) {
+      if (!empty($value['#mm_delete_link'])) {
+        // This is really messy!! Unfortunately, there is not a better way to
+        // remove the "delete" button under the individuals permission section.
+        $value['#mm_delete_link'] = preg_replace('|<a href.+?MMSettingsPermsDelete.+?delete</a>|i', '', $value['#mm_delete_link']);
+      }
+    }
+  }
+  // Call validate function to ensure individual permissions aren't altered.
+  $form['#validate'][] = '_mm_remove_individual_perm_option_node_form_validate';
+  // Add a post render to remove the add button under the individual permission
+  // settings.  It is kind of gross, but is really the only way to get at it.
+  $form['settings_perms']['table']['#post_render'][] = '_mm_remove_individual_perm_option_node_form_post_render';
+}
+
+function _mm_remove_individual_perm_option_node_form_validate($form, &$form_state) {
+  // If a user doesn't have permission to add individual node permissions
+  if (!user_access('add individual mm perms', NULL)) {
+    // We want to keep existing individual node permissions.
+    if (!empty($form_state['values']['node']->users_w)) {
+      // Since the users_w array hasn't been updated with permissions the user
+      // may have tried to add, we can use it to rebuild the all_values_user
+      // string.  This will keep any existing individual permissions a user
+      // with higher privileges may have added.
+      $form_state['values']['all_values_user'] = MM_PERMS_WRITE . implode(MM_PERMS_WRITE, array_keys($form_state['values']['node']->users_w));
+    }
+    else {
+      // If the users_w array is empty, we want to make sure no individual
+      // permissions are assigned.
+      $form_state['values']['all_values_user'] = '';
+    }
+  }
+}
+
+function _mm_remove_individual_perm_option_node_form_post_render($rendered_html, &$render_array) {
+  // If a user doesn't have permission to add individual node permissions
+  if (!user_access('add individual mm perms', NULL)) {
+    // This is really messy!! Unfortunately, there is not a better way to
+    // remove the "add" button under the individuals permission section.
+    $rendered_html = preg_replace('|<td colspan="1"></td><td><a id="mm-add-users-.+?add</a></td>|i', '', $rendered_html);
+  }
+
+  return $rendered_html;
+}

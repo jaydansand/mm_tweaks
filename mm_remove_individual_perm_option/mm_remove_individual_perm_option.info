@@ -1,0 +1,7 @@
+name = Remove Individual Permissions
+description = Removes the ability for a user to grant an individual access to a MM page or node.
+core = 7.x
+package = Monster Menus Tweaks
+version = "7.x-dev"
+files[] = mm_remove_individual_perm_option.module
+dependencies[] = monster_menus
