@@ -8,11 +8,14 @@
  */
 function hidden_title_checkbox_form_node_form_alter(&$form, &$form_state, $form_id) {
   $form['#after_build'][] = 'hidden_title_checkbox_after_build';
+  
+  //Set the weight of the checkbox equal to the weight of the title, then the checkbox appears below the title.
+  $checkbox_weight = $form['title']['#weight'];
   $form['title_checkbox'] = array(
     '#type' => 'checkbox',
     '#default_value' => 0,
     '#return_value' => 1,
-    '#weight' => -4,
+    '#weight' => $checkbox_weight,
     '#title' => 'Hide the title when viewing a page',
   );
   
