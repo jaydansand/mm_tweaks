@@ -1,0 +1,82 @@
+<?php
+/**
+ * @file
+ * 
+ */
+
+/**
+ * Implements hook_expire_cache_alter().
+ */
+function bridge_mm_expire_expire_cache_alter(&$urls, $object_type, $object, $absolute_urls_passed) {
+  $expire_node = $object_type == 'node' && !empty($object) && !empty($object->nid);
+  if (!$expire_node || $absolute_urls_passed) {
+    return;
+  }
+  // mm_content_get_by_nid() will return the MMTIDs currently in the DB for this
+  // NID (as in, prior to the update/insert operation).
+  $previous_mmtids = mm_content_get_by_nid($object->nid);
+  if (!isset($previous_mmtids) || !is_array($previous_mmtids)) {
+    $previous_mmtids = array();
+  }
+  // $node->mm_catlist[] contains the MMTIDs after the operation, as an
+  // associated array of (int) MMTID => (string) TITLE members.
+  $new_mmtids = array_map('strval', !empty($object->mm_catlist) ? array_keys($object->mm_catlist) : array());
+  $mmtids = array_unique(array_merge($previous_mmtids, $new_mmtids));
+  if (!empty($mmtids)) {
+    foreach ($mmtids as $mmtid) {
+      if ($mmtid_url = mm_content_get_mmtid_url($mmtid)) {
+        $alias_mmtid_url = trim(url($mmtid_url), '/');
+        $new_urls = array(
+          $mmtid_url,
+          $alias_mmtid_url,
+          "{$mmtid_url}/node/{$object->nid}",
+          "{$alias_mmtid_url}/node/{$object->nid}",
+        );
+        foreach ($new_urls as $url) {
+          $urls[str_replace('/', '-', $url)] = $url;
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Implements hook_expire_cache().
+ *
+ * Provide an "external" cache interface to clear Drupal's internal page cache.
+ *
+ * This hook is called by expire.module when expire_status is set to
+ * EXPIRE_STATUS_ENABLED_EXTERNAL (basically, only modules that implement this
+ * hook get their caches cleared). We implement this hook in order to also clear
+ * Drupal's page cache (which normally happens when expire_status is set to
+ * the mutually exclusive value EXPIRE_STATUS_ENABLED_INTERNAL). This way, both
+ * actions take place: the external caches (e.g. Varnish) and the internal cache
+ * are cleared.
+ *
+ * The logic for this is taken from ExpireAPI::executeInternalExpiration() as of
+ * expire.module 7.x-2.0-rc2.
+ *
+ * @see ExpireAPI::executeInternalExpiration()
+ */
+function bridge_mm_expire_expire_cache($urls, $wildcards, $object_type, $object) {
+  // Quick semaphore logic to prevent any changes in APIs from causing runaway
+  // recursion when we call cache_clear_all().
+  $semaphore = &drupal_static(__function__, FALSE);
+  if ($semaphore) {
+    return;
+  }
+  $semaphore = TRUE;
+  $include_base_url = variable_get('expire_include_base_url', FALSE);
+  foreach ($urls as $internal_path => $absolute_url) {
+    // Only apply url() if expire_include_base_url is NOT set. If it IS set,
+    // then this operation already happened.
+    if (!$include_base_url) {
+      $absolute_url = url($internal_path, array('absolute' => TRUE, 'alias' => TRUE));
+    }
+    // Check if wildcard is enabled for this URL.
+    $wildcard = !empty($wildcards[$internal_path]);
+    // Clear cached page data.
+    cache_clear_all($absolute_url, 'cache_page', $wildcard);
+  }
+  $semaphore = FALSE;
+}
