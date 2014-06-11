@@ -6,3 +6,5 @@ version = "7.x-1.0"
 dependencies[] = linkit
 dependencies[] = ctools
 dependencies[] = monster_menus
+
+files[] = plugins/linkit_mm_pages.class.php
