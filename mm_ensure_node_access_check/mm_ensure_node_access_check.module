@@ -1,0 +1,140 @@
+<?php
+/**
+ * @file
+ * Ensure that MM permissions are enforced for all node/foo/bar menu items.
+ */
+
+/**
+ * Implements hook_help().
+ */
+function mm_ensure_node_access_check_help($path, $arg) {
+  if ($path == 'admin/help#mm_ensure_node_access_check') {
+    $output = file_get_contents(drupal_get_path('module', 'mm_ensure_node_access_check') . '/README.txt');
+    return module_exists('markdown') ? filter_xss_admin(module_invoke('markdown', 'filter', 'process', 0, -1, $output)) : '<pre>' . check_plain($output) . '</pre>';
+  }
+}
+
+/**
+ * Implements hook_mm_menu_alter().
+ */
+function mm_ensure_node_access_check_mm_menu_alter(&$items) {
+  $access_callback_whitelist = array(
+    'node_access',
+    '_mm_menu_access_add',
+    '_mm_menu_access_any_admin',
+    '_mm_menu_access_group_viewall',
+    '_mm_menu_access_node_delete',
+    '_mm_menu_access_node_reorder',
+    '_mm_menu_access_node_restore',
+    '_mm_menu_access_node_revisions',
+    '_mm_schedule_add_all_to_my_calendar_access',
+    '_mm_schedule_add_node_to_my_calendar_access',
+    '_mm_schedule_add_node_to_my_calendar_access',
+    '_mm_schedule_remove_event_from_calendar_access',
+    '_mm_schedule_remove_event_from_calendar_access',
+    '_mm_webform_results_access',
+    '_mm_workflow_access_tab_access',
+    'mm_content_node_access',
+    'mm_content_user_can',
+    'mm_content_user_can_node',
+    'mm_media_embed_media_access',
+    'mm_media_gallery_access',
+    'mm_schedule_my_calendar_access',
+    'mm_webform_webform_results_access',
+    'mm_webform_webform_results_clear_access',
+    'mm_workflow_access_mm_node_access',
+    '_rss_page_menu_access_add_portal',
+    'rss_page_access',
+  );
+  drupal_alter('mm_ensure_node_access_check_whitelist', $access_callback_whitelist);
+  foreach ($items as $path => $item) {
+    $is_node_item = substr_compare('node/%', $path, 0, 6) === 0;
+    if ($is_node_item) {
+      // Access callbacks may be:
+      //  - Inherited, but only in the case of MENU_DEFAULT_LOCAL_TASK items.
+      //    - If $item['type'] is omitted, item is MENU_NORMAL_ITEM (no inherit)
+      //  - Integer or Boolean.
+      //  - Actual callback function.
+      // @see hook_menu()
+      $can_inherit_callback = isset($item['type']) && $item['type'] == MENU_DEFAULT_LOCAL_TASK;
+      if (!isset($item['access callback']) && $can_inherit_callback) {
+        // Skip this item, as it inherits its permissions from a parent, so if
+        // applicable we'll cover permissions there.
+        continue;
+      }
+      // Apply some type-casting and other modification logic, borrowed from
+      // _menu_router_build().
+      if (!isset($item['access callback']) && isset($item['access arguments'])) {
+        // Default callback.
+        $item['access callback'] = 'user_access';
+      }
+      if (!isset($item['access callback']) || empty($item['page callback'])) {
+        $item['access callback'] = 0;
+      }
+      if (is_bool($item['access callback'])) {
+        $item['access callback'] = intval($item['access callback']);
+      }
+      $original_callback = isset($item['access callback']) ? $item['access callback'] : 0;
+      // Check if this access callback is on our whitelist, to speed up page
+      // loading slightly by not wrapping the outer call in our access callback.
+      if (in_array($original_callback, $access_callback_whitelist)) {
+        continue;
+      }
+      // Allow other modules to change the MM permission that we will require.
+      $context = array($path => $item);
+      $permission = MM_PERMS_READ;
+      drupal_alter('mm_ensure_node_access_check_perm', $perm, $context);
+      // Check if, after altering $permission, we should proceed.
+      if (!empty($permission)) {
+        // Push the original callback onto the end of access arguments.
+        $items[$path]['access arguments'][] = $original_callback;
+        // Pass along the required permission for this item.
+        $items[$path]['access arguments'][] = $permission;
+        // Make sure that the referenced node is available in a predictable
+        // place.
+        $items[$path]['access arguments'][] = 1;
+        // Change the access callback to our method.
+        $items[$path]['access callback'] = 'mm_ensure_node_access_check_callback';
+      }
+    }
+  }
+}
+
+/**
+ * Callback for "access callback" set in mm_ensure_node_access_check_mm_menu_alter().
+ *
+ * Run mm_content_user_can_node() prior to checking the original menu item's
+ * access callback.
+ */
+function mm_ensure_node_access_check_callback() {
+  $args = func_get_args();
+  $node = array_pop($args);
+  // Determine the referenced node's NID, if possible.
+  $nid = FALSE;
+  if (is_numeric($node)) {
+    $nid = $node;
+  }
+  else if (is_object($node) && !empty($node->nid)) {
+    $nid = $node->nid;
+  }
+  // Only check mm_content_user_can_node() if we could derive the NID, using the
+  // same methods that it does.  This avoids being overly brittle in crazy weird
+  // edge cases.
+  $permission = array_pop($args);
+  if (!empty($nid) && !mm_content_user_can_node($nid, $permission)) {
+    return FALSE;
+  }
+  $original_callback = array_pop($args);
+  // Default to deny, which may cause some errors, but it's better to handle
+  // those than to be overly-permissive.
+  $access = FALSE;
+  // Logic borrowed from _menu_check_access().
+  $original_callback = empty($original_callback) ? 0 : trim($original_callback);
+  if (is_numeric($original_callback)) {
+    $access = (bool) $original_callback;
+  }
+  else if (function_exists($original_callback)) {
+    $access = call_user_func_array($original_callback, $args);
+  }
+  return $access;
+}

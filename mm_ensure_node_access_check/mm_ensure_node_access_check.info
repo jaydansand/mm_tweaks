@@ -1,0 +1,5 @@
+name = Monster Menus Ensure Node Access Check
+description = Ensure that MM permissions are enforced for all node/foo/bar menu items.
+core = 7.x
+package = Monster Menus Tweaks
+dependencies[] = monster_menus
