@@ -1,0 +1,25 @@
+<?php
+/**
+ * @file
+ * Seamlessly replace MM's Splitter.js.
+ * @see https://github.com/thejameskyle/splitter
+ */
+
+/**
+ * Implements hook_js_alter().
+ */
+function mm_splitter_update_js_alter(&$javascript) {
+  // Check for Splitter.js.
+  $splitter_key = drupal_get_path('module', 'monster_menus') . '/libraries/splitter.js';
+  if (empty($javascript[$splitter_key])) {
+    // If we can't find Splitter.js, exit out. This is an error condition,
+    // and should only happen if the path has been changed by the module's
+    // maintainer or altered by another module. Either way, we can't handle it.
+    return;
+  }
+  $path = drupal_get_path('module', 'mm_splitter_update');
+  $splitter_js = &$javascript[$splitter_key];
+
+  // Alter the Splitter.js path to point to our version.
+  $splitter_js['data'] = $path . '/splitter/splitter.min.js';
+}

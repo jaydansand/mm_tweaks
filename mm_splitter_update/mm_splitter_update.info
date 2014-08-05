@@ -1,0 +1,7 @@
+name = Monster Menus Splitter Update
+description = Upgrade MM's bundled Splitter.js to a newer fork (improve compatibility with both IE < 11 and jQuery 1.7+).
+version = "7.x-1.x-dev"
+core = "7.x"
+project = "Monster Menus Tweaks"
+
+dependencies[] = monster_menus
