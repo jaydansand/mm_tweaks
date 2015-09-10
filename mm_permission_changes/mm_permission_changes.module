@@ -1,0 +1,243 @@
+<?php
+/**
+ * @file
+ * 
+ */
+
+/**
+ * Implements hook_menu().
+ */
+function mm_permission_changes_menu() {
+  $items = array(
+    'admin/config/people/mm_permission_changes' => array(
+      'title' => t('MM Permission Changes'),
+      'description' => t('Apply permission changes to sections of the MM tree.'),
+      'page callback' => 'drupal_get_form',
+      'page arguments' => array('mm_permission_changes_form'),
+      'access callback' => 'user_access',
+      'access arguments' => array('administer all menus'),
+    ),
+    'admin/config/people/mm_permission_changes/apply' => array(
+      'title' => t('Apply MM Permission Changes'),
+      'type' => MENU_DEFAULT_LOCAL_TASK,
+    ),
+  );
+  return $items;
+}
+
+/**
+ * Callback for drupal_get_form() from hook_menu() definition.
+ */
+function mm_permission_changes_form($form, &$form_state) {
+  $form = array();
+
+  $root_mmtid = mm_home_mmtid();
+  $root_name = mm_content_get_name($root_mmtid);
+  $form['root_mmtid'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Permission Change Root(s)'),
+    '#description' => t('Choose starting point(s) in the tree on which to act.'),
+    '#collapsible' => FALSE,
+    'roots' => array(
+      '#title' => t('Selected Root(s)'),
+      '#type' => 'mm_catlist',
+      '#required' => TRUE,
+      '#default_value' => array(
+        //$root_mmtid => $root_name,
+      ),
+      '#mm_list_popup_start' => $root_mmtid,
+      '#mm_list_min' => 1,
+      '#mm_list_max' => 10,
+      '#mm_list_selectable' => 'au',
+    ),
+  );
+
+  $group_mmtid = mm_content_groups_mmtid();
+  $group_name = mm_content_expand_name(MM_ENTRY_NAME_GROUPS);
+  $form['group_gid'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Group(s) to Change'),
+    '#description' => t('Choose the group(s) that will be changed (permissions added/removed).'),
+    '#collapsible' => FALSE,
+    'groups' => array(
+      '#title' => t('Selected Group(s)'),
+      '#type' => 'mm_grouplist',
+      '#required' => TRUE,
+      '#default_value' => array(
+        //$group_mmtid => $group_name,
+      ),
+      '#mm_list_popup_start' => $group_mmtid,
+      '#mm_list_min' => 1,
+      '#mm_list_max' => 10,
+      '#mm_list_selectable' => 'au',
+    ),
+  );
+  $perm_types = array(
+    MM_PERMS_WRITE => t('MM_PERMS_WRITE: Delete/change settings on pages; edit nodes (if applied to nodes on pages)'),
+    MM_PERMS_SUB => t('MM_PERMS_SUB: Append sub-pages; no node permissions'),
+    MM_PERMS_APPLY => t('MM_PERMS_APPLY: Add content; edit nodes (if applied to nodes on pages)'),
+    MM_PERMS_READ => t('MM_PERMS_READ: Read; no node permissions'),
+  );
+  $form['permission_changes'] = array(
+    '#type' => 'fieldset',
+    '#description' => t('Specify at least one permission removal/addition.'),
+    '#title' => t('Permission Changes') . ' <span class="form-required" title="' . t('This field is required.') . '">*</span>',
+    'remove_perms' => array(
+      '#title' => t('Permissions to Remove From Group(s)'),
+      '#description' => t('These permissions will be removed before any additions take place.'),
+    ),
+    'add_perms' => array(
+      '#title' => t('Permissions to Add to Group(s)'),
+      '#description' => t('These permissions will be added after any removals take place.'),
+      '#suffix' => '<div class="messages warning">' . t('Note: MM_PERMS_WRITE will take precedence over MM_PERMS_SUB and/or MM_PERMS_APPLY.') . '</div>',
+    ),
+  );
+  foreach (array('remove_perms', 'add_perms') as $checkboxes) {
+    $form['permission_changes'][$checkboxes] += array(
+      '#type' => 'checkboxes',
+      '#options' => $perm_types,
+    );
+  }
+  $form['options'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Miscellaneous Options'),
+    'apply_to_nodes' => array(
+      '#type' => 'checkbox',
+      '#title' => t('Apply changes to nodes on pages'),
+      '#description' => t('Any MM_PERMS_WRITE or MM_PERMS_APPLY deletions/additions will cause {mm_node_write} deletions/insertions, in that order.'),
+      '#default_value' => TRUE,
+    ),
+    'clear_mm_caches' => array(
+      '#type' => 'checkbox',
+      '#title' => t('Clear MM caches after making changes (a really good idea!)'),
+      '#default_value' => TRUE,
+    ),
+  );
+  $form['actions'] = array(
+    '#type' => 'actions',
+    'submit' => array(
+      '#type' => 'submit',
+      '#value' => t('Apply Permissions'),
+    ),
+  );
+  return $form;
+}
+
+/**
+ * Form validation handler for mm_permission_changes_form().
+ */
+function mm_permission_changes_form_validate($form, &$form_state) {
+  if (empty($form_state['values']['roots'])) {
+    form_set_error('roots', t('Specify at least one root to change.'));
+  }
+  if (empty($form_state['values']['groups'])) {
+    form_set_error('groups', t('Specify at least one group to change.'));
+  }
+  $changes = FALSE;
+  foreach (array('remove_perms', 'add_perms') as $checkboxes_name) {
+    $checkboxes = array_flip($form_state['values'][$checkboxes_name]);
+    if (count($checkboxes) > 1) {
+      $changes = TRUE;
+    }
+  }
+  if (!$changes) {
+    form_set_error('permission_changes', t('Please choose some permission changes to make.'));
+  }
+}
+
+/**
+ * Form submit handler for mm_permission_changes_form().
+ */
+function mm_permission_changes_form_submit($form, &$form_state) {
+  $roots = array_map('intval', array_keys($form_state['values']['roots']));
+  $groups = array_map('intval', array_keys($form_state['values']['groups']));
+  $apply_to_nodes = !empty($form_state['values']['apply_to_nodes']);
+
+  // First accomplish any removals.
+  $empty_array = array_fill(0, count($form_state['values']['remove_perms']), 0);
+  $remove_perms = array_diff($form_state['values']['remove_perms'], $empty_array);
+  if (!empty($remove_perms)) {
+    $query = 'DELETE a FROM {mm_tree_access} a, {mm_tree_parents} p WHERE ' .
+             'a.mmtid = p.mmtid AND a.gid IN (:groups) AND (p.mmtid IN (:roots) OR p.parent IN (:roots)) AND a.mode IN (:modes)';
+    // Drupal docs say that db_query() must only be used for SELECT, and that
+    // DELETE must use db_delete().  However, there is no capacity for
+    // multi-table db_delete(), so that's a non-starter. db_query() works, and
+    // doesn't require an intermediary SELECT and PHP building arrays, so that's
+    // what we'll use.
+    $result = db_query($query, array(
+      ':roots' => $roots,
+      ':groups' => $groups,
+      ':modes' => $remove_perms,
+    ));
+    drupal_set_message(t('Removed :count permission(s) from pages.', array(':count' => $result->rowCount())));
+    // If we've removed MM_PERMS_WRITE or MM_PERMS_APPLY, remove write
+    // privileges from nodes as well.
+    if ($apply_to_nodes) {
+      $node_write_perms = in_array(MM_PERMS_WRITE, $remove_perms) || in_array(MM_PERMS_APPLY, $remove_perms);
+      if ($node_write_perms) {
+        $node_query = 'DELETE w FROM {mm_node_write} w, {mm_node2tree} nt, {mm_tree_parents} p WHERE ' .
+                      "w.nid = nt.nid AND nt.mmtid = p.mmtid AND w.gid IN (:groups) AND (p.mmtid IN (:roots) OR p.parent IN (:roots))";
+        $result     = db_query($node_query, array(
+          ':roots' => $roots,
+          ':groups' => $groups,
+        ));
+        drupal_set_message(t('Removed :count permission(s) from nodes.', array(':count' => $result->rowCount())));
+      }
+    }
+  }
+
+  // Next, accomplish any additions.
+  $empty_array = array_fill(0, count($form_state['values']['add_perms']), 0);
+  // MM_PERMS_WRITE trumps all other permissions.
+  $add_perms = !empty($form_state['values']['add_perms'][MM_PERMS_WRITE]) ?
+    array(MM_PERMS_WRITE => MM_PERMS_WRITE) :
+    array_diff($form_state['values']['add_perms'], $empty_array);
+  // If any other permissions are defined, then MM_PERMS_READ is assumed.
+  if (count($add_perms) > 1 && isset($add_perms[MM_PERMS_READ])) {
+    unset($add_perms[MM_PERMS_READ]);
+  }
+  if (!empty($add_perms)) {
+    $affected_rows_pages = 0;
+    $affected_rows_nodes = 0;
+    $query = 'INSERT INTO {mm_tree_access} SELECT DISTINCT p.mmtid, :group, :mode FROM {mm_tree_parents} p WHERE ' .
+             '(p.mmtid IN (:roots) OR p.parent IN (:roots))';
+    $node_query = 'INSERT INTO {mm_node_write} (nid, gid) SELECT DISTINCT nt.nid, :group FROM {mm_node2tree} nt, {mm_tree_parents} p WHERE ' .
+                  "nt.mmtid = p.mmtid AND (p.mmtid IN (:roots) OR p.parent IN (:roots))";
+    $node_write_perms = in_array(MM_PERMS_WRITE, $add_perms) || in_array(MM_PERMS_APPLY, $add_perms);
+
+    foreach ($groups as $group) {
+      foreach ($add_perms as $perm) {
+        $result = db_query($query, array(
+          ':roots' => $roots,
+          ':group' => $group,
+          ':mode' => $perm,
+        ));
+        $affected_rows_pages += $result->rowCount();
+      }
+      if ($apply_to_nodes && $node_write_perms) {
+        $result = db_query($node_query, array(
+          ':roots' => $roots,
+          ':group' => $group,
+        ));
+        $affected_rows_nodes += $result->rowCount();
+      }
+    }
+    drupal_set_message(t('Added :count permission(s) to pages.', array(':count' => $affected_rows_pages)));
+    if ($apply_to_nodes && $node_write_perms) {
+      drupal_set_message(t('Added :count permission(s) to nodes.', array(':count' => $affected_rows_nodes)));
+    }
+  }
+
+  // Lastly, optionally reset MM caches.
+  if (!empty($form_state['values']['clear_mm_caches'])) {
+    if (is_callable('_mm_content_clear_access_cache')) {
+      foreach ($groups as $group) {
+        _mm_content_clear_access_cache($group);
+      }
+      drupal_set_message(t('Cleared MM permission caches.'));
+    }
+    else {
+      drupal_set_message(t('Could not clear MM permission caches: function not callable. Newer version of Monster Menus?'), 'error');
+    }
+  }
+}

@@ -1,0 +1,6 @@
+name = MM Permission Changes
+description = Add/Remove group permissions to sections of the tree without affecting other permissions.
+core = 7.x
+package = Monster Menus Tweaks
+version = "7.x-dev"
+dependencies[] = monster_menus
