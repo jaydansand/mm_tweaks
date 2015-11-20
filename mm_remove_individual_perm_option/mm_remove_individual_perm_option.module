@@ -71,8 +71,19 @@ function mm_remove_individual_perm_option_form_node_form_alter(&$form, &$form_st
         $value['#mm_delete_link'] = preg_replace('|<a href.+?MMSettingsPermsDelete.+?delete</a>|i', '', $value['#mm_delete_link']);
       }
     }
+    // Store the original set of all_values_user so that it can be restored
+    // upon submit (just in case someone attempts to tamper with the hidden
+    // form value - we can't remove the hidden form due to breaking MM JS).
+    // We need to namespace this value on the left hand (so as not to conflict
+    // with potential "$instance_suffix" versions).
+    // @see _mm_ui_form_parse_perms()
+    $form['settings_perms']['mm_ripo_orig_all_values_user'] = array(
+      '#type' => 'value',
+      '#value' => $form['settings_perms']['all_values_user']['#default_value'],
+    );
   }
-  // Call validate function to ensure individual permissions aren't altered.
+  // Call validate function to ensure individual permissions aren't altered
+  // (restore them from our store).
   $form['#validate'][] = '_mm_remove_individual_perm_option_node_form_validate';
   // Add a post render to remove the add button under the individual permission
   // settings.  It is kind of gross, but is really the only way to get at it.
@@ -82,18 +93,15 @@ function mm_remove_individual_perm_option_form_node_form_alter(&$form, &$form_st
 function _mm_remove_individual_perm_option_node_form_validate($form, &$form_state) {
   // If a user doesn't have permission to add individual node permissions
   if (!user_access('add individual mm perms', NULL)) {
-    // We want to keep existing individual node permissions.
-    if (!empty($form_state['values']['node']->users_w)) {
-      // Since the users_w array hasn't been updated with permissions the user
-      // may have tried to add, we can use it to rebuild the all_values_user
-      // string.  This will keep any existing individual permissions a user
-      // with higher privileges may have added.
-      $form_state['values']['all_values_user'] = MM_PERMS_WRITE . implode(MM_PERMS_WRITE, array_keys($form_state['values']['node']->users_w));
-    }
-    else {
-      // If the users_w array is empty, we want to make sure no individual
-      // permissions are assigned.
-      $form_state['values']['all_values_user'] = '';
+    // We want to keep existing individual node permissions, which means
+    // restoring "all_values_user" EXCEPT when "no_save" exists and the
+    // submitted all_values_user is empty. We've stashed a copy of the original
+    // value in "mm_ripo_orig_all_values_user".
+    $no_save = empty($form_state['values']['all_values_user']) &&
+               !empty($form_statem['values']['no_save']);
+    if (!$no_save) {
+      // Restore permission string from stashed copy.
+      $form_state['values']['all_values_user'] = $form_state['values']['mm_ripo_orig_all_values_user'];
     }
   }
 }
