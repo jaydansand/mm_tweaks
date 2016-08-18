@@ -36,6 +36,11 @@ function mm_panels_schema_1() {
         'type' => 'varchar',
         'length' => '255',
       ),
+      'active' =>array (
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
     ),
     'primary key' => array('did'),
   );
@@ -57,4 +62,52 @@ function mm_panels_uninstall() {
   db_delete('mm_tree_flags')
     ->condition('flag', 'create_panel', '=')
     ->execute();
+}
+
+function mm_panels_update_7000() {
+
+  db_drop_primary_key('mm_panels_page');
+  
+  db_add_primary_key('mm_panels_page', array('mmtid'));
+  
+  $schema = drupal_get_schema('mm_panels_page');
+  db_add_field('mm_panels_page', 'active', $schema['fields']['active']); 
+  
+  db_query(
+    'UPDATE {mm_panels_page} AS p ' .
+    'JOIN {mm_tree_flags} AS t ' .
+    'ON t.mmtid = p.mmtid ' .
+    'SET p.active = :true ' .
+    'WHERE t.flag = :flag',
+    array(
+      ':true' => 1,
+      ':flag' => 'create_panel',
+    )
+  );
+  
+  db_delete('mm_tree_flags')
+    ->condition('flag', 'create_panel', '=')
+    ->execute();
+}
+
+/**
+ * Add storage_type and storage_id for Panels 7.x-3.6 compatibility.
+ */
+function mm_panels_update_7001() {
+  $displays_select = db_select('mm_panels_page', 'mp')
+    ->fields('mp', array('did', 'mmtid'));
+  $table_alias = $displays_select->join('panels_display', 'pd', 'mp.did = pd.did');
+  $displays_select->condition("{$table_alias}.storage_type", '');
+  $displays = $displays_select->execute();
+  foreach ($displays as $display) {
+    if (!empty($display->mmtid) && !empty($display->did)) {
+      db_update('panels_display')
+        ->fields(array(
+          'storage_type' => 'mm_panels',
+          'storage_id' => $display->mmtid,
+        ))
+        ->condition('did', $display->did)
+        ->execute();
+    }
+  }
 }

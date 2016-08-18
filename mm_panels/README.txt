@@ -5,6 +5,7 @@ CONTENTS OF THIS FILE
   * Restrictions
   * Installation
   * Configuration
+  * Future Development
   * Maintainers
 
 
@@ -36,6 +37,19 @@ section.  Activating this flag on a page allows users with both the "Use the
 Panels In-Place Editor" Drupal permission and the "Delete/Change settings" MM
 permission (for that page) to see the Panels IPE controls while on that page's
 content view.
+
+FUTURE DEVELOPMENT
+------------------
+There are a couple "to do" items documented in the mm_panels.module file.  These 
+items in no way prevent a user from using this module.  The additional items
+simply provide additional configuration options.
+
+1) Add a configuration page for which roles are allow to add certain types of
+  content to a panelized page.  For example a user with the role "www_core" can
+  add a view to a panelized page, but not a widget.
+
+2) Add a configuration page for the default layout that is initially applied to
+  a panelized page.  Currently, a one column layout is applied.
 
 MAINTAINERS
 -----------
